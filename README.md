@@ -27,9 +27,9 @@ var (
 )
 
 func main() {
-	// Add a key with a timeout of 1 second
+	// Add a key with a timeout of 2 second，Renew every (2/3)s intervals
 	dog.Watch(client, "key", 2*time.Second, func(ctx context.Context) error {
-		// Do something when the key expires
+		// Do something
 		return nil
 	})
 }
