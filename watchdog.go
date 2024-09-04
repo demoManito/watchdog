@@ -3,30 +3,33 @@ package watchdog
 import (
 	"context"
 	"errors"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 )
 
-var (
-	defaultWatchdog = &Watchdog{
-		RetryMaxWaitDuration:  2 * time.Second,
-		RetryIntervalDuration: 100 * time.Millisecond,
-		RetainLock:            false,
-	}
-)
-
 // Watchdog is a tool to monitor the status of a service.
 type Watchdog struct {
 	RetryMaxWaitDuration  time.Duration
 	RetryIntervalDuration time.Duration
-	RetainLock            bool // retain the lock after the lock is acquired
+	IsUnlock              bool // wether to unlock the event after the execution is completed, default is true
 }
 
-func New() *Watchdog {
-	return defaultWatchdog
+func Default() *Watchdog {
+	return &Watchdog{
+		RetryMaxWaitDuration:  5 * time.Second,
+		RetryIntervalDuration: 100 * time.Millisecond,
+		IsUnlock:              true,
+	}
+}
+
+func (w *Watchdog) Clone() *Watchdog {
+	return &Watchdog{
+		RetryMaxWaitDuration:  w.RetryMaxWaitDuration,
+		RetryIntervalDuration: w.RetryIntervalDuration,
+		IsUnlock:              w.IsUnlock,
+	}
 }
 
 func (w *Watchdog) Watch(client *redis.Client, key string, duration time.Duration, fn func(ctx context.Context) error) error {
@@ -40,22 +43,24 @@ func (w *Watchdog) Watch(client *redis.Client, key string, duration time.Duratio
 	defer cancel()
 	closeChan := make(chan struct{})
 	defer close(closeChan)
-	ctx := &Context{
-		client:         client,
-		ctx:            newCtx,
-		key:            key,
-		val:            val.String(),
-		expireDuration: duration,
-	}
-	var ok bool
+	var (
+		c = &ctx{
+			client:         client,
+			ctx:            newCtx,
+			key:            key,
+			val:            val.String(),
+			expireDuration: duration,
+		}
+		ok bool
+	)
 	for {
-		ok, err = w.Lock(ctx)
-		if err != nil {
+		ok, err = c.Lock()
+		if err != nil || !ok {
 			select {
 			case <-returyCtx.Done():
 				return errors.New("watchdog: timeout")
 			case <-time.NewTimer(w.RetryIntervalDuration).C:
-				continue // NOTICE: lock reentrant
+				continue // lock reentrant
 			}
 		}
 		break
@@ -64,22 +69,18 @@ func (w *Watchdog) Watch(client *redis.Client, key string, duration time.Duratio
 		return errors.New("watchdog: lock failed")
 	}
 
-	wg := &sync.WaitGroup{}
-	defer func() {
-		wg.Wait()
-		if !w.RetainLock {
-			_, _ = w.Unlock(ctx)
-		}
-	}()
-	wg.Add(1)
 	go func() {
-		defer wg.Done()
 		ticker := time.NewTicker(duration / 3)
-		defer ticker.Stop()
+		defer func() {
+			ticker.Stop()
+			if w.IsUnlock {
+				_, _ = c.Unlock()
+			}
+		}()
 		for {
 			select {
 			case <-ticker.C:
-				_ = w.Expire(ctx)
+				_ = c.Expire()
 			case <-closeChan:
 				return
 			case <-newCtx.Done():
@@ -87,5 +88,10 @@ func (w *Watchdog) Watch(client *redis.Client, key string, duration time.Duratio
 			}
 		}
 	}()
-	return fn(ctx.ctx)
+	defer func() {
+		if w.IsUnlock {
+			_, _ = c.Unlock()
+		}
+	}()
+	return fn(c.ctx)
 }

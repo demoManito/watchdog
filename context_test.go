@@ -6,8 +6,8 @@ import (
 	"time"
 )
 
-func TestWatchdog_Lock(t *testing.T) {
-	ctx := &Context{
+func TestContext_Lock(t *testing.T) {
+	ctx := &ctx{
 		ctx:            context.Background(),
 		client:         client,
 		key:            "test",
@@ -19,7 +19,7 @@ func TestWatchdog_Lock(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ok, err := New().Lock(ctx)
+	ok, err := ctx.Lock()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -28,7 +28,7 @@ func TestWatchdog_Lock(t *testing.T) {
 	}
 
 	ctx.val = "test2"
-	ok, err = New().Lock(ctx)
+	ok, err = ctx.Lock()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,8 +37,8 @@ func TestWatchdog_Lock(t *testing.T) {
 	}
 }
 
-func TestWatchdog_Unlock(t *testing.T) {
-	ctx := &Context{
+func TestContext_Unlock(t *testing.T) {
+	ctx := &ctx{
 		ctx:            context.Background(),
 		client:         client,
 		key:            "test",
@@ -50,7 +50,7 @@ func TestWatchdog_Unlock(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ok, err := New().Lock(ctx)
+	ok, err := ctx.Lock()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +59,7 @@ func TestWatchdog_Unlock(t *testing.T) {
 	}
 
 	ctx.val = "test2"
-	ok, err = New().Unlock(ctx)
+	ok, err = ctx.Unlock()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +68,7 @@ func TestWatchdog_Unlock(t *testing.T) {
 	}
 
 	ctx.val = "test1"
-	ok, err = New().Unlock(ctx)
+	ok, err = ctx.Unlock()
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,4 +1,4 @@
-module watchdog
+module github.com/demoManito/watchdog
 
 go 1.22.2
 
